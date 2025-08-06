@@ -117,19 +117,20 @@ public class BookController {
         System.out.println("기존 쿠키 cart = [" + cart + "]");
 
         if (!cart.isEmpty()) { //쿠키가 비어있지 않을 때만 처리
-        	String[] items = cart.split("\\|");
+        	String[] items = cart.split("\\|"); // | 구분자로 나눠서 저장
             StringBuilder updatedCart = new StringBuilder();
             //삭제하고 남은 항목들을 새로 담을 문자열 생성기
 
             for (String item : items) {
-                String[] parts = item.split(":"); 
+                String[] parts = item.split(":");  // : 구분자로 나눠서 저장
 
                 // 공백제거를 위해 trim()
-                String currentId = parts[0].trim();
+                String currentId = parts[0].trim(); 
+                // 현재 비교 하려는 id를 공백제거해서 저장
 
                 System.out.println("현재 비교 대상 id = [" + currentId + "], 제목 = [" + parts[1] + "]");
 
-                if (!currentId.equals(bookId.trim())) {//id를 비교해서 삭제대상이 아니라면
+                if (!currentId.equals(bookId.trim())) {//삭제하려는 id와 비교해서 삭제대상이 아니라면
                     if (updatedCart.length() > 0) //(맨 앞에는 | 안 붙임)
                     	updatedCart.append("|");
                     updatedCart.append(item);//새로운 쿠키 문자열에 추가 
