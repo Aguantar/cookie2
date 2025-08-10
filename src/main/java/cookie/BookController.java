@@ -1,151 +1,217 @@
 package cookie;
 
-
-
-import java.util.ArrayList;
-import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.io.UnsupportedEncodingException;
+import java.util.*;
 
 @Controller
+@RequiredArgsConstructor
 public class BookController {
 
-    @Autowired
-    private BookService bookService;
+    private final BookService bookService;
+    private final CheckoutService checkoutService;
 
     @GetMapping("bookList")
     public String bookList(Model model) {
-        List<Book> books = bookService.getAllBooks(); // 책 목록 DB 조회
-        model.addAttribute("books", books);  // model에 books 저장
-        return "bookList";  // bookList.jsp로 이동
+        model.addAttribute("books", bookService.getAllBooks());
+        return "bookList"; // -> /WEB-INF/views/cookie/bookList.jsp
     }
-    
+
     @PostMapping("addToCart")
-    public String addToCart(
-            @RequestParam("bookId") String bookId,
-            @RequestParam("bookName") String bookName,
-            @RequestParam("price") String price,
-            HttpServletRequest request,
-            HttpServletResponse response) { //폼 데이터(bookId, name, price)를 받아옴
+    public String addToCart(@RequestParam("bookId") String bookId,
+                            @RequestParam("bookName") String bookName,
+                            @RequestParam("price") String price, // 폼에서 받은 문자열
+                            HttpServletRequest request,
+                            HttpServletResponse response) {
 
-        // 쿠키 이름: cart
-        String newItem = bookId + ":" + bookName + ":" + price;
+        String encName  = enc(bookName);
+        String priceStr = String.valueOf(Integer.parseInt(price)); // 숫자 검증
 
-        // 기존 cart 쿠키가 있는지 확인
-        Cookie[] cookies = request.getCookies(); //쿠키 전부 가져옴
-        String cartValue = "";
+        String cart = readCookie(request, "cart");
 
-        if (cookies != null) {
-            for (Cookie c : cookies) {
-                if ("cart".equals(c.getName())) {//쿠키이름이 cart일떄
-                    cartValue = c.getValue(); //기존 쿠키값 저장
+        // 포맷: id:name:price:qty (|로 아이템 구분)
+        Map<String, String> map = new LinkedHashMap<>();
+        if (!cart.isEmpty()) {
+            for (String token : cart.split("\\|")) {
+                String[] p = token.split(":");
+                if (p.length == 4) {
+                    map.put(p[0].trim(), token);
                 }
             }
         }
 
-        // 새 항목 추가
-        if (!cartValue.isEmpty()) {//기존 쿠키값이 있는 경우 새로운 값 추가
-            cartValue += "|" + newItem;  // 구분자로 | 사용
-        } else {//기존 쿠키값 없으면 새로운 값 저장
-            cartValue = newItem;
+        if (map.containsKey(bookId)) {
+            String[] p = map.get(bookId).split(":");
+            int qty = Integer.parseInt(p[3]) + 1;
+            map.put(bookId, p[0] + ":" + p[1] + ":" + p[2] + ":" + qty);
+        } else {
+            map.put(bookId, bookId + ":" + encName + ":" + priceStr + ":1");
         }
 
-        // 쿠키 생성 및 설정
-        Cookie cartCookie = new Cookie("cart", cartValue);
-        cartCookie.setMaxAge(60 * 60 * 24); // 하루
-        cartCookie.setPath("/"); // 전체 경로에서 접근 가능하도록 설정
-        response.addCookie(cartCookie);
+        String updated = String.join("|", map.values());
+        writeCookie(response, "cart", updated, 60 * 60 * 24);
 
-        // 장바구니 페이지로 리다이렉션
-        return "redirect:/cookie/bookList"; // bookList.jsp로 이동
+        return "redirect:/cookie/bookList";
     }
-    
+
     @GetMapping("cart")
     public String viewCart(HttpServletRequest request, Model model) {
-        Cookie[] cookies = request.getCookies();
-        List<Book> cartItems = new ArrayList<>();
+        String cart = readCookie(request, "cart");
+        List<CartItem> list = new ArrayList<>();
 
-        if (cookies != null) {
-            for (Cookie c : cookies) {
-                if ("cart".equals(c.getName())) {
-                    String[] items = c.getValue().split("\\|"); // | 구분자로 해서 저장 
-                    //"101:자바책:10000|102:스프링책:15000" → ["101:자바책:10000", "102:스프링책:15000"]
-                    for (String item : items) {
-                        String[] parts = item.split(":"); // : 기준으로 나눔
-                        //"101:자바책:10000" → ["101", "자바책", "10000"]
-                        if (parts.length == 3) { //정확히 3개의 요소가 있는지 확인
-                            Book book = new Book(parts[0], parts[1], parts[2]);
-                            cartItems.add(book); //쿠키에서 cart 읽고 Book 객체로 변환해서 리스트에 저장
-                        }
-                    }
+        if (!cart.isEmpty()) {
+            for (String token : cart.split("\\|")) {
+                String[] p = token.split(":");
+                if (p.length == 4) {
+                    String id   = p[0].trim();
+                    String name = dec(p[1]);
+                    String priceStr = p[2];           // 표시용 문자열
+                    int qty     = Integer.parseInt(p[3]);
+                    list.add(new CartItem(id, name, priceStr, qty));
                 }
             }
         }
 
-        model.addAttribute("cartItems", cartItems);
-        //JSP에서 사용할 수 있도록 cartItems라는 이름으로 model에 등록
-        //→ cartView.jsp에서 ${cartItems}로 접근 가능
-        return "cartView"; // cartView.jsp 이동
+        model.addAttribute("cartItems", list);
+        return "cartView"; // -> /WEB-INF/views/cookie/cartView.jsp
     }
-    
+
     @PostMapping("cart/clear")
     public String clearCart(HttpServletResponse response) {
-        Cookie cookie = new Cookie("cart", ""); //이름이 "cart"인 쿠키를 새로 생성
-        //값은 "" (빈 문자열)로 설정 → 기존 장바구니 내용을 제거
-        cookie.setPath("/");//해당 쿠키의 유효 경로를 /로 설정
-        cookie.setMaxAge(0); // 쿠키의 유효 시간을 0초로 설정 → 브라우저가 즉시 삭제
-        response.addCookie(cookie);
-        return "redirect:/cookie/cart"; // 장바구니 페이지로 리다이렉트
+        writeCookie(response, "cart", "", 0);
+        return "redirect:/cookie/cart";
     }
-    
+
     @PostMapping("cart/remove")
-    public String removeItem(@RequestParam("bookId") String bookId, //사용자가 삭제 요청한 책의 ID를 파라미터로 받아옴
-                             @CookieValue(value = "cart", defaultValue = "") String cart, //기존 쿠키 값을 가져옴
-                             HttpServletResponse response) {  //쿠키를 새로 설정하여 브라우저에 전달하기 위해 사용
+    public String removeItem(@RequestParam("bookId") String bookId,
+                             @CookieValue(value = "cart", defaultValue = "") String cart,
+                             HttpServletResponse response) {
 
-        System.out.println("요청된 bookId = [" + bookId + "]");
-        System.out.println("기존 쿠키 cart = [" + cart + "]");
-
-        if (!cart.isEmpty()) { //쿠키가 비어있지 않을 때만 처리
-        	String[] items = cart.split("\\|"); // | 구분자로 나눠서 저장
-            StringBuilder updatedCart = new StringBuilder();
-            //삭제하고 남은 항목들을 새로 담을 문자열 생성기
-
-            for (String item : items) {
-                String[] parts = item.split(":");  // : 구분자로 나눠서 저장
-
-                // 공백제거를 위해 trim()
-                String currentId = parts[0].trim(); 
-                // 현재 비교 하려는 id를 공백제거해서 저장
-
-                System.out.println("현재 비교 대상 id = [" + currentId + "], 제목 = [" + parts[1] + "]");
-
-                if (!currentId.equals(bookId.trim())) {//삭제하려는 id와 비교해서 삭제대상이 아니라면
-                    if (updatedCart.length() > 0) //(맨 앞에는 | 안 붙임)
-                    	updatedCart.append("|");
-                    updatedCart.append(item);//새로운 쿠키 문자열에 추가 
-                } else {
-                    System.out.println("삭제됨: " + item);
+        if (!cart.isEmpty()) {
+            List<String> kept = new ArrayList<>();
+            for (String token : cart.split("\\|")) {
+                String[] p = token.split(":");
+                if (p.length == 4 && !p[0].trim().equals(bookId.trim())) {
+                    kept.add(token);
                 }
             }
-
-            Cookie newCart = new Cookie("cart", updatedCart.toString());//새로운 쿠키 생성
-            newCart.setPath("/");
-            newCart.setMaxAge(60 * 60 * 24); // 1일
-            response.addCookie(newCart);
+            String updated = String.join("|", kept);
+            writeCookie(response, "cart", updated, 60 * 60 * 24);
         }
-
-        return "redirect:/cookie/cart"; //장바구니페이지 이동
+        return "redirect:/cookie/cart";
     }
 
+    // ▼▼ 추가: 수량 -1
+    @PostMapping("cart/decrease")
+    public String decreaseItem(@RequestParam("bookId") String bookId,
+                               @CookieValue(value = "cart", defaultValue = "") String cart,
+                               HttpServletResponse response) {
+        if (!cart.isEmpty()) {
+            String updated = updateQty(cart, bookId, -1); // qty - 1 (0 이하가 되면 항목 제거)
+            writeCookie(response, "cart", updated, 60 * 60 * 24);
+        }
+        return "redirect:/cookie/cart";
+    }
+
+    // ▼▼ 추가: 수량 +1
+    @PostMapping("cart/increase")
+    public String increaseItem(@RequestParam("bookId") String bookId,
+                               @CookieValue(value = "cart", defaultValue = "") String cart,
+                               HttpServletResponse response) {
+        if (!cart.isEmpty()) {
+            String updated = updateQty(cart, bookId, +1); // qty + 1
+            writeCookie(response, "cart", updated, 60 * 60 * 24);
+        }
+        return "redirect:/cookie/cart";
+    }
+
+    @PostMapping("checkout")
+    public String checkout(@RequestParam("userId") Long userId,
+                           @RequestParam("address") String address,
+                           @RequestParam("postcode") String postcode,
+                           HttpServletRequest request,
+                           HttpServletResponse response,
+                           Model model) {
+
+        String cart = readCookie(request, "cart");
+        if (cart.isEmpty()) {
+            model.addAttribute("error", "장바구니가 비어 있습니다.");
+            return "cartView";
+        }
+
+        List<CartItem> list = new ArrayList<>();
+        for (String token : cart.split("\\|")) {
+            String[] p = token.split(":");
+            if (p.length == 4) {
+                String id   = p[0].trim();
+                String name = dec(p[1]);
+                String priceStr = p[2];          // 표시용
+                int qty     = Integer.parseInt(p[3]);
+                list.add(new CartItem(id, name, priceStr, qty));
+            }
+        }
+
+        try {
+            Long orderId = checkoutService.checkout(userId, address, postcode, list);
+            writeCookie(response, "cart", "", 0); // 성공 시 장바구니 비우기
+            model.addAttribute("orderId", orderId);
+            return "checkoutSuccess";
+        } catch (Exception e) {
+            model.addAttribute("error", e.getMessage());
+            return "cartView";
+        }
+    }
+
+    // ===== Helpers =====
+    private String readCookie(HttpServletRequest req, String name) {
+        Cookie[] cs = req.getCookies();
+        if (cs == null) return "";
+        for (Cookie c : cs) if (name.equals(c.getName())) return c.getValue();
+        return "";
+    }
+
+    private void writeCookie(HttpServletResponse resp, String name, String value, int maxAge) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setPath("/");
+        cookie.setMaxAge(maxAge);
+        resp.addCookie(cookie);
+    }
+
+    private String enc(String v) {
+        try { return URLEncoder.encode(v, "UTF-8"); }
+        catch (UnsupportedEncodingException e) { throw new RuntimeException(e); }
+    }
+    private String dec(String v) {
+        try { return URLDecoder.decode(v, "UTF-8"); }
+        catch (UnsupportedEncodingException e) { throw new RuntimeException(e); }
+    }
+
+    // qty 증감 공통 처리 (delta: +1 / -1)
+    private String updateQty(String cart, String targetId, int delta) {
+        List<String> out = new ArrayList<>();
+        for (String token : cart.split("\\|")) {
+            String[] p = token.split(":"); // id:name:price:qty
+            if (p.length != 4) continue;
+            String id = p[0].trim();
+            if (id.equals(targetId.trim())) {
+                int qty = Integer.parseInt(p[3]) + delta;
+                if (qty > 0) {
+                    out.add(p[0] + ":" + p[1] + ":" + p[2] + ":" + qty);
+                }
+                // qty <= 0 이면 항목 제거(추가 안 함)
+            } else {
+                out.add(token);
+            }
+        }
+        return String.join("|", out);
+    }
 }

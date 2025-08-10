@@ -1,19 +1,16 @@
 package cookie;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
+import java.math.BigDecimal;
 
-@NoArgsConstructor
-@AllArgsConstructor
-@Getter
-@Setter
-@ToString
+@NoArgsConstructor @AllArgsConstructor
+@Getter @Setter @ToString
 public class Book {
-    private String id;
-    private String name;
-    private String price;
+    private Long bookId;
+    private String title;
+    private String author;
+    private String description;
+    private Integer price;
+    private Integer stock;
+    private String coverImage;
 }
-    

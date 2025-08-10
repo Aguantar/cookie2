@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cookie.BookMapper">
+
+    <resultMap id="BookMap" type="cookie.Book">
+        <id     property="bookId" column="book_id"/>
+        <result property="title"  column="title"/>
+        <result property="price"  column="price"/>
+    </resultMap>
+
+    <select id="selectAllBooks" resultMap="BookMap">
+        SELECT book_id, title, price
+        FROM books
+        ORDER BY book_id DESC
+    </select>
+
+    <select id="findBookForCheckout" parameterType="long" resultMap="BookMap">
+        SELECT book_id, title, price
+        FROM books
+        WHERE book_id = #{bookId}
+            LIMIT 1
+    </select>
+
+    <update id="decrementStock">
+        UPDATE books
+        SET stock = stock - #{qty}
+        WHERE book_id = #{bookId} AND stock >= #{qty}
+    </update>
+
+</mapper>
